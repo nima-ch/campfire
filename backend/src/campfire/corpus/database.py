@@ -171,7 +171,12 @@ class CorpusDatabase:
         conn = self.connect()
         
         # Use FTS5 match syntax for better search
-        fts_query = query.replace("'", "''")  # Escape single quotes
+        # Convert multi-word queries to OR syntax for better matching
+        query_terms = query.replace("'", "''").split()  # Escape single quotes and split
+        if len(query_terms) > 1:
+            fts_query = " OR ".join(query_terms)
+        else:
+            fts_query = query.replace("'", "''")
         
         cursor = conn.execute("""
             SELECT 
