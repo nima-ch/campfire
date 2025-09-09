@@ -37,6 +37,7 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "rich>=13.0.0",
     "typer>=0.9.0",
+    "pdfminer.six>=20231228",
 ]
 
 [project.optional-dependencies]
