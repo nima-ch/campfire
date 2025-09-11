@@ -1,0 +1,38 @@
+Placeholder for WHO Psychological First Aid: Guide for Field Workers
+
+This is a placeholder file for testing the Campfire corpus ingestion system.
+In a production deployment, this would be the actual PDF document downloaded from:
+https://apps.who.int/iris/bitstream/handle/10665/44615/9789241548205_eng.pdf
+
+Document Information:
+- Title: WHO Psychological First Aid: Guide for Field Workers
+- Description: WHO guide for providing psychological first aid to people in distress
+- Document ID: who_psychological_first_aid_2011
+
+Emergency Response Guidelines:
+
+Chapter 1: Basic First Aid
+When someone is injured, follow these steps:
+1. Ensure the scene is safe before approaching
+2. Check if the person is conscious and responsive
+3. Call for emergency medical services if needed
+4. Provide appropriate first aid based on the injury
+5. Monitor the person until help arrives
+
+Chapter 2: Psychological Support
+When providing psychological first aid:
+1. Approach calmly and respectfully
+2. Listen actively without judgment
+3. Provide practical support and information
+4. Connect with social supports when appropriate
+5. Respect cultural differences and preferences
+
+Chapter 3: Emergency Situations
+For various emergency situations:
+- Bleeding: Apply direct pressure with clean cloth
+- Burns: Cool with water, do not use ice
+- Choking: Perform back blows and abdominal thrusts
+- Unconsciousness: Check breathing, place in recovery position
+- Shock: Keep person warm and lying down
+
+Remember: This is not medical advice. Always seek professional help for serious injuries.
