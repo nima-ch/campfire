@@ -83,10 +83,15 @@ class AuditLogEntry(BaseModel):
     """Individual audit log entry."""
     timestamp: datetime
     query: str
+    query_hash: Optional[str] = None
     response_blocked: bool
     critic_decision: Dict[str, Any]
     emergency_detected: bool
     conversation_id: Optional[str] = None
+    response_time_ms: Optional[int] = None
+    llm_provider: Optional[str] = None
+    harmony_tokens_used: Optional[int] = None
+    system_metrics: Optional[Dict[str, Any]] = None
 
 
 class AuditLogResponse(BaseModel):
@@ -95,6 +100,34 @@ class AuditLogResponse(BaseModel):
     total_count: int
     page: int
     page_size: int
+
+
+class SystemHealthEntry(BaseModel):
+    """System health monitoring entry."""
+    timestamp: datetime
+    cpu_percent: Optional[float] = None
+    memory_percent: Optional[float] = None
+    memory_used_mb: Optional[float] = None
+    disk_usage_percent: Optional[float] = None
+    llm_provider_status: str
+    corpus_db_status: str
+
+
+class PerformanceMetric(BaseModel):
+    """Performance metric entry."""
+    timestamp: datetime
+    endpoint: str
+    response_time_ms: int
+    status_code: int
+    error_message: Optional[str] = None
+
+
+class HarmonyDebugEntry(BaseModel):
+    """Harmony debug data entry."""
+    timestamp: datetime
+    query: str
+    harmony_debug_data: Dict[str, Any]
+    harmony_tokens_used: Optional[int] = None
 
 
 class ErrorResponse(BaseModel):

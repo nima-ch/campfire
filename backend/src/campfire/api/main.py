@@ -6,6 +6,7 @@ import os
 import uuid
 import logging
 import dataclasses
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -219,6 +220,7 @@ def create_app() -> FastAPI:
     async def chat(request: ChatRequest):
         """Main chat endpoint for emergency queries."""
         conversation_id = request.conversation_id or str(uuid.uuid4())
+        start_time = time.time()
         
         try:
             # Validate components are available
@@ -243,11 +245,33 @@ def create_app() -> FastAPI:
             # Review response with safety critic
             critic_decision = app_state["safety_critic"].review_response(response_dict)
             
-            # Log the interaction
+            # Calculate response time
+            response_time_ms = int((time.time() - start_time) * 1000)
+            
+            # Collect Harmony debug data if available
+            harmony_debug_data = None
+            harmony_tokens_used = None
+            if hasattr(app_state["harmony_engine"], 'get_debug_info'):
+                debug_info = app_state["harmony_engine"].get_debug_info()
+                harmony_debug_data = debug_info.get('debug_data')
+                harmony_tokens_used = debug_info.get('tokens_used')
+            
+            # Log the interaction with enhanced data
             app_state["audit_logger"].log_interaction(
                 query=request.query,
                 critic_decision=critic_decision,
-                conversation_id=conversation_id
+                conversation_id=conversation_id,
+                response_time_ms=response_time_ms,
+                llm_provider=type(app_state["llm_provider"]).__name__ if app_state["llm_provider"] else None,
+                harmony_tokens_used=harmony_tokens_used,
+                harmony_debug_data=harmony_debug_data
+            )
+            
+            # Log performance metric
+            app_state["audit_logger"].log_performance_metric(
+                endpoint="/chat",
+                response_time_ms=response_time_ms,
+                status_code=200 if critic_decision.status.value == "ALLOW" else 403
             )
             
             # Handle blocked responses
@@ -289,6 +313,9 @@ def create_app() -> FastAPI:
         except Exception as e:
             logger.error(f"Chat processing failed: {e}", exc_info=True)
             
+            # Calculate response time for error case
+            response_time_ms = int((time.time() - start_time) * 1000)
+            
             # Log the error interaction
             if app_state["audit_logger"]:
                 from ..critic.types import CriticDecision, CriticStatus
@@ -300,7 +327,17 @@ def create_app() -> FastAPI:
                 app_state["audit_logger"].log_interaction(
                     query=request.query,
                     critic_decision=error_decision,
-                    conversation_id=conversation_id
+                    conversation_id=conversation_id,
+                    response_time_ms=response_time_ms,
+                    llm_provider=type(app_state["llm_provider"]).__name__ if app_state["llm_provider"] else None
+                )
+                
+                # Log performance metric for error
+                app_state["audit_logger"].log_performance_metric(
+                    endpoint="/chat",
+                    response_time_ms=response_time_ms,
+                    status_code=500,
+                    error_message=str(e)
                 )
             
             raise HTTPException(
@@ -435,7 +472,7 @@ def create_app() -> FastAPI:
                     detail="Audit system not available"
                 )
             
-            stats = app_state["audit_logger"].get_stats()
+            stats = app_state["audit_logger"].get_enhanced_stats()
             
             # Add component status
             stats["components"] = {
@@ -457,6 +494,105 @@ def create_app() -> FastAPI:
                 status_code=500,
                 detail=f"Failed to retrieve stats: {str(e)}"
             )
+    
+    # System health monitoring endpoint
+    @app.get("/admin/health-history")
+    async def get_health_history(
+        hours: int = 24,
+        current_admin = Depends(get_current_admin)
+    ):
+        """Get system health history (admin only)."""
+        try:
+            if not app_state["audit_logger"]:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Audit system not available"
+                )
+            
+            health_data = app_state["audit_logger"].get_system_health_history(hours)
+            return {"health_history": health_data}
+            
+        except Exception as e:
+            logger.error(f"Health history retrieval failed: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to retrieve health history: {str(e)}"
+            )
+    
+    # Performance metrics endpoint
+    @app.get("/admin/performance")
+    async def get_performance_metrics(
+        hours: int = 24,
+        current_admin = Depends(get_current_admin)
+    ):
+        """Get performance metrics (admin only)."""
+        try:
+            if not app_state["audit_logger"]:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Audit system not available"
+                )
+            
+            metrics = app_state["audit_logger"].get_performance_metrics(hours)
+            return metrics
+            
+        except Exception as e:
+            logger.error(f"Performance metrics retrieval failed: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to retrieve performance metrics: {str(e)}"
+            )
+    
+    # Harmony debug endpoint
+    @app.get("/admin/harmony-debug")
+    async def get_harmony_debug(
+        limit: int = 10,
+        current_admin = Depends(get_current_admin)
+    ):
+        """Get Harmony debug data (admin only)."""
+        try:
+            if not app_state["audit_logger"]:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Audit system not available"
+                )
+            
+            debug_data = app_state["audit_logger"].get_harmony_debug_data(limit)
+            return {"harmony_debug": debug_data}
+            
+        except Exception as e:
+            logger.error(f"Harmony debug retrieval failed: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to retrieve Harmony debug data: {str(e)}"
+            )
+    
+    # System health logging (background task)
+    @app.on_event("startup")
+    async def start_health_monitoring():
+        """Start background health monitoring."""
+        import asyncio
+        
+        async def log_health_periodically():
+            while True:
+                try:
+                    if app_state["audit_logger"]:
+                        llm_status = "healthy" if app_state["llm_provider"] else "unavailable"
+                        db_status = "healthy" if app_state["corpus_db"] else "unavailable"
+                        
+                        app_state["audit_logger"].log_system_health(
+                            llm_provider_status=llm_status,
+                            corpus_db_status=db_status
+                        )
+                    
+                    # Log every 5 minutes
+                    await asyncio.sleep(300)
+                except Exception as e:
+                    logger.error(f"Health monitoring error: {e}")
+                    await asyncio.sleep(60)  # Retry after 1 minute on error
+        
+        # Start the background task
+        asyncio.create_task(log_health_periodically())
     
     return app
 

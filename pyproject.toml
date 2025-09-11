@@ -38,6 +38,7 @@ dependencies = [
     "rich>=13.0.0",
     "typer>=0.9.0",
     "pdfminer.six>=20231228",
+    "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]
