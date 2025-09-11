@@ -5,6 +5,7 @@ Main FastAPI application for Campfire emergency helper.
 import os
 import uuid
 import logging
+import dataclasses
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -236,8 +237,11 @@ def create_app() -> FastAPI:
             # Generate response using Harmony engine
             response = await app_state["harmony_engine"].process_query(request.query)
             
+            # Convert ChecklistResponse to dictionary for safety critic
+            response_dict = dataclasses.asdict(response)
+            
             # Review response with safety critic
-            critic_decision = app_state["safety_critic"].review_response(response)
+            critic_decision = app_state["safety_critic"].review_response(response_dict)
             
             # Log the interaction
             app_state["audit_logger"].log_interaction(

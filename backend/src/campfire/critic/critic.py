@@ -150,8 +150,11 @@ class SafetyCritic:
             if not step.source.get('doc_id'):
                 issues.append(f"Step {i} missing document ID in source")
             
-            if not step.source.get('loc'):
+            loc = step.source.get('loc')
+            if not loc:
                 issues.append(f"Step {i} missing location in source")
+            elif not isinstance(loc, list) or len(loc) != 2 or not all(isinstance(x, int) for x in loc):
+                issues.append(f"Step {i} has invalid location format in source")
         
         return issues
     

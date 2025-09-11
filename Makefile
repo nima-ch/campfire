@@ -56,6 +56,43 @@ test:
 test-fast:
 	uv run pytest backend/tests -v -m "not slow"
 
+# Comprehensive testing for task 11
+test-comprehensive:
+	uv run python backend/tests/run_comprehensive_tests.py
+
+test-comprehensive-fast:
+	uv run python backend/tests/run_comprehensive_tests.py --fast
+
+test-comprehensive-verbose:
+	uv run python backend/tests/run_comprehensive_tests.py --verbose
+
+test-offline:
+	uv run pytest backend/tests/test_offline_validation.py -v
+
+test-emergency-scenarios:
+	uv run pytest backend/tests/test_emergency_scenarios.py -v
+
+test-citations:
+	uv run pytest backend/tests/test_citation_accuracy.py -v
+
+test-safety-integration:
+	uv run pytest backend/tests/test_safety_critic_integration.py -v
+
+test-performance:
+	uv run pytest backend/tests/test_performance.py -v -m "not slow"
+
+test-performance-full:
+	uv run pytest backend/tests/test_performance.py -v
+
+test-e2e:
+	uv run pytest backend/tests/test_end_to_end.py -v
+
+test-frontend:
+	cd frontend && npm test -- --coverage --watchAll=false
+
+test-all:
+	uv run python backend/tests/run_comprehensive_tests.py --frontend
+
 # Data processing
 ingest:
 	uv run python scripts/ingest_corpus.py
