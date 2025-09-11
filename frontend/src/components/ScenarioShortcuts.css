@@ -1,0 +1,133 @@
+.scenario-shortcuts {
+  width: 100%;
+}
+
+.shortcuts-title {
+  text-align: center;
+  color: var(--dark-gray);
+  margin-bottom: 1.5rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.scenario-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--white);
+  border: 2px solid var(--light-gray);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+  min-height: 100px;
+}
+
+.scenario-button:hover {
+  border-color: var(--info-blue);
+  background: #f0f9ff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.scenario-button:active {
+  transform: translateY(0);
+}
+
+.scenario-icon {
+  font-size: 2rem;
+  margin-bottom: 0.25rem;
+}
+
+.scenario-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--dark-gray);
+  line-height: 1.3;
+}
+
+/* Emergency-specific styling */
+.scenario-button[title*="unconscious"],
+.scenario-button[title*="chest pain"],
+.scenario-button[title*="bleeding"],
+.scenario-button[title*="choking"] {
+  border-color: var(--emergency-red);
+}
+
+.scenario-button[title*="unconscious"]:hover,
+.scenario-button[title*="chest pain"]:hover,
+.scenario-button[title*="bleeding"]:hover,
+.scenario-button[title*="choking"]:hover {
+  background: #fef2f2;
+  border-color: var(--emergency-red);
+}
+
+/* Mobile responsive design */
+@media (max-width: 768px) {
+  .shortcuts-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+  
+  .scenario-button {
+    padding: 0.75rem;
+    min-height: 80px;
+  }
+  
+  .scenario-icon {
+    font-size: 1.5rem;
+  }
+  
+  .scenario-label {
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .shortcuts-grid {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  
+  .scenario-button {
+    flex-direction: row;
+    justify-content: flex-start;
+    text-align: left;
+    min-height: 60px;
+    padding: 0.75rem 1rem;
+  }
+  
+  .scenario-icon {
+    font-size: 1.25rem;
+    margin-bottom: 0;
+  }
+  
+  .scenario-label {
+    font-size: 0.9rem;
+  }
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .scenario-button {
+    border-width: 3px;
+    font-weight: bold;
+  }
+}
+
+/* Print styles */
+@media print {
+  .scenario-shortcuts {
+    display: none;
+  }
+}

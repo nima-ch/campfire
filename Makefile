@@ -18,7 +18,9 @@ help:
 	@echo "  ingest       Process and ingest corpus documents"
 	@echo ""
 	@echo "Build:"
-	@echo "  build        Build the application"
+	@echo "  build        Build the Python backend"
+	@echo "  build-frontend Build the React frontend"
+	@echo "  build-all    Build both backend and frontend"
 	@echo "  clean        Clean build artifacts and cache"
 	@echo ""
 	@echo "Docker:"
@@ -62,10 +64,17 @@ ingest:
 build:
 	uv build
 
+build-frontend:
+	cd frontend && npm run build
+
+build-all: build build-frontend
+
 clean:
 	rm -rf dist/
 	rm -rf build/
 	rm -rf *.egg-info/
+	rm -rf frontend/build/
+	rm -rf frontend/node_modules/
 	find . -type d -name __pycache__ -exec rm -rf {} +
 	find . -type f -name "*.pyc" -delete
 	find . -type f -name "*.pyo" -delete
