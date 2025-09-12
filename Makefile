@@ -26,6 +26,21 @@ help:
 	@echo "Docker:"
 	@echo "  docker-build Build Docker image"
 	@echo "  docker-run   Run Docker container"
+	@echo "  docker-compose-up    Start services with docker-compose"
+	@echo "  docker-compose-down  Stop services with docker-compose"
+	@echo "  docker-compose-logs  View docker-compose logs"
+	@echo "  docker-compose-build Rebuild docker-compose services"
+	@echo ""
+	@echo "Deployment:"
+	@echo "  validate-config      Validate system configuration"
+	@echo "  validate-config-json Validate config with JSON output"
+	@echo ""
+	@echo "Backup & Restore:"
+	@echo "  backup               Create timestamped backup"
+	@echo "  backup-with-logs     Create backup including log files"
+	@echo "  restore BACKUP=file  Restore from backup file"
+	@echo "  list-backup BACKUP=file    List backup contents"
+	@echo "  verify-backup BACKUP=file  Verify backup integrity"
 
 # Installation
 install:
@@ -125,6 +140,47 @@ docker-build:
 
 docker-run:
 	docker run -p 8000:8000 campfire:latest
+
+docker-compose-up:
+	docker-compose up -d
+
+docker-compose-down:
+	docker-compose down
+
+docker-compose-logs:
+	docker-compose logs -f campfire
+
+docker-compose-build:
+	docker-compose build --no-cache
+
+# Deployment and configuration
+validate-config:
+	uv run python scripts/validate_config.py
+
+validate-config-json:
+	uv run python scripts/validate_config.py --json
+
+# Backup and restore
+backup:
+	uv run python scripts/backup_restore.py backup backups/campfire-$(shell date +%Y%m%d_%H%M%S).tar.gz
+
+backup-with-logs:
+	uv run python scripts/backup_restore.py backup backups/campfire-$(shell date +%Y%m%d_%H%M%S).tar.gz --include-logs
+
+restore:
+	@echo "Usage: make restore BACKUP=path/to/backup.tar.gz"
+	@if [ -z "$(BACKUP)" ]; then echo "Error: BACKUP parameter required"; exit 1; fi
+	uv run python scripts/backup_restore.py restore $(BACKUP)
+
+list-backup:
+	@echo "Usage: make list-backup BACKUP=path/to/backup.tar.gz"
+	@if [ -z "$(BACKUP)" ]; then echo "Error: BACKUP parameter required"; exit 1; fi
+	uv run python scripts/backup_restore.py list $(BACKUP)
+
+verify-backup:
+	@echo "Usage: make verify-backup BACKUP=path/to/backup.tar.gz"
+	@if [ -z "$(BACKUP)" ]; then echo "Error: BACKUP parameter required"; exit 1; fi
+	uv run python scripts/backup_restore.py verify $(BACKUP)
 
 # Pre-commit hooks
 pre-commit-install:

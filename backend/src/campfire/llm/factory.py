@@ -30,7 +30,7 @@ class ProviderConfig:
     def __init__(
         self,
         provider_type: ProviderType,
-        model_name: str = "gpt-oss-20b",
+        model_name: str = "gpt-oss:20b",
         **kwargs
     ):
         """
@@ -55,7 +55,7 @@ class ProviderConfig:
             logger.warning(f"Unknown provider type: {provider_type_str}, defaulting to ollama")
             provider_type = ProviderType.OLLAMA
             
-        model_name = config_dict.get("model_name", "gpt-oss-20b")
+        model_name = config_dict.get("model_name", "gpt-oss:20b")
         
         # Extract provider-specific config
         config = {k: v for k, v in config_dict.items() 
@@ -146,7 +146,7 @@ def get_available_providers() -> List[Dict[str, Any]]:
 
 def create_best_available_provider(
     preferred_order: Optional[List[ProviderType]] = None,
-    model_name: str = "gpt-oss-20b",
+    model_name: str = "gpt-oss:20b",
     **kwargs
 ) -> LLMProvider:
     """
@@ -194,7 +194,28 @@ def create_best_available_provider(
     raise ModelNotAvailableError(error_msg) from last_error
 
 
-def auto_detect_provider(model_name: str = "gpt-oss-20b") -> LLMProvider:
+def create_provider_from_string(provider_type: str) -> LLMProvider:
+    """
+    Create an LLM provider instance based on provider type string.
+    
+    Args:
+        provider_type: Provider type as string (ollama, vllm, lmstudio)
+        
+    Returns:
+        Initialized LLM provider instance
+        
+    Raises:
+        ModelNotAvailableError: If the provider cannot be created or initialized
+    """
+    try:
+        provider_enum = ProviderType(provider_type.lower())
+        config = ProviderConfig(provider_enum)
+        return create_provider(config)
+    except ValueError:
+        raise ModelNotAvailableError(f"Unknown provider type: {provider_type}")
+
+
+def auto_detect_provider(model_name: str = "gpt-oss:20b") -> LLMProvider:
     """
     Automatically detect and create the best available provider.
     

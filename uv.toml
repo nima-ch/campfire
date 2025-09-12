@@ -2,6 +2,5 @@
 
 # Extra index URLs for specialized packages
 extra-index-url = [
-    "https://download.pytorch.org/whl/cpu",  # PyTorch CPU builds
     "https://pypi.org/simple/",              # Standard PyPI
 ]

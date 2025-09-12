@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 from .. import __version__
-from ..llm.factory import create_provider, get_available_providers
+from ..llm.factory import create_provider_from_string, get_available_providers
 from ..harmony.engine import HarmonyEngine
 from ..harmony.browser import LocalBrowserTool
 from ..critic.critic import SafetyCritic
@@ -83,7 +83,7 @@ async def initialize_components():
     
     # Initialize LLM provider
     try:
-        app_state["llm_provider"] = create_provider(llm_provider_type)
+        app_state["llm_provider"] = create_provider_from_string(llm_provider_type)
         logger.info(f"Initialized {llm_provider_type} LLM provider")
     except Exception as e:
         logger.error(f"Failed to initialize LLM provider: {e}")

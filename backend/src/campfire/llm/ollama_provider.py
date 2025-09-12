@@ -26,7 +26,7 @@ class OllamaProvider:
     
     def __init__(
         self,
-        model_name: str = "gpt-oss-20b",
+        model_name: str = "gpt-oss:20b",
         base_url: str = "http://localhost:11434",
         timeout: float = 120.0
     ):

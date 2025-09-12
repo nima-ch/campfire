@@ -10,10 +10,14 @@ import '@testing-library/jest-dom';
 import ChatInterface from './ChatInterface';
 import OfflineIndicator from './OfflineIndicator';
 import DocumentViewer from './DocumentViewer';
+import { DocumentSnippet } from '../types';
 
 // Mock fetch to simulate network conditions
 const mockFetch = jest.fn();
 global.fetch = mockFetch;
+
+// Mock citation click handler
+const mockOnCitationClick = jest.fn();
 
 // Mock navigator.onLine
 Object.defineProperty(navigator, 'onLine', {
@@ -21,18 +25,27 @@ Object.defineProperty(navigator, 'onLine', {
   value: true,
 });
 
+// Helper function to set online status
+const setOnlineStatus = (isOnline: boolean) => {
+  Object.defineProperty(navigator, 'onLine', {
+    writable: true,
+    value: isOnline
+  });
+};
+
 describe('Offline Validation Tests', () => {
   beforeEach(() => {
     mockFetch.mockClear();
-    navigator.onLine = true;
+    mockOnCitationClick.mockClear();
+    setOnlineStatus(true);
   });
 
   describe('OfflineIndicator Component', () => {
     test('shows offline status when network is unavailable', async () => {
       // Simulate offline mode
-      navigator.onLine = false;
+      setOnlineStatus(false);
       
-      render(<OfflineIndicator />);
+      render(<OfflineIndicator isOnline={false} />);
       
       // Should show offline indicator
       expect(screen.getByText(/offline/i)).toBeInTheDocument();
@@ -40,27 +53,27 @@ describe('Offline Validation Tests', () => {
     });
 
     test('shows online status when network is available', () => {
-      navigator.onLine = true;
+      setOnlineStatus(true);
       
-      render(<OfflineIndicator />);
+      render(<OfflineIndicator isOnline={true} />);
       
       // Should show online status or no offline indicator
       expect(screen.queryByText(/offline/i)).not.toBeInTheDocument();
     });
 
     test('responds to network status changes', async () => {
-      const { rerender } = render(<OfflineIndicator />);
+      const { rerender } = render(<OfflineIndicator isOnline={true} />);
       
       // Start online
       expect(screen.queryByText(/offline/i)).not.toBeInTheDocument();
       
       // Simulate going offline
       act(() => {
-        navigator.onLine = false;
+        setOnlineStatus(false);
         window.dispatchEvent(new Event('offline'));
       });
       
-      rerender(<OfflineIndicator />);
+      rerender(<OfflineIndicator isOnline={false} />);
       
       await waitFor(() => {
         expect(screen.getByText(/offline/i)).toBeInTheDocument();
@@ -68,11 +81,11 @@ describe('Offline Validation Tests', () => {
       
       // Simulate coming back online
       act(() => {
-        navigator.onLine = true;
+        setOnlineStatus(true);
         window.dispatchEvent(new Event('online'));
       });
       
-      rerender(<OfflineIndicator />);
+      rerender(<OfflineIndicator isOnline={true} />);
       
       await waitFor(() => {
         expect(screen.queryByText(/offline/i)).not.toBeInTheDocument();
@@ -85,7 +98,7 @@ describe('Offline Validation Tests', () => {
       // Mock network error
       mockFetch.mockRejectedValue(new Error('Network error'));
       
-      render(<ChatInterface />);
+      render(<ChatInterface onCitationClick={mockOnCitationClick} />);
       
       const input = screen.getByPlaceholderText(/describe your emergency/i);
       const submitButton = screen.getByRole('button', { name: /send/i });
@@ -100,10 +113,10 @@ describe('Offline Validation Tests', () => {
 
     test('shows appropriate error message for offline requests', async () => {
       // Simulate offline mode
-      navigator.onLine = false;
+      setOnlineStatus(false);
       mockFetch.mockRejectedValue(new Error('Failed to fetch'));
       
-      render(<ChatInterface />);
+      render(<ChatInterface onCitationClick={mockOnCitationClick} />);
       
       const input = screen.getByPlaceholderText(/describe your emergency/i);
       const submitButton = screen.getByRole('button', { name: /send/i });
@@ -118,10 +131,10 @@ describe('Offline Validation Tests', () => {
 
     test('retries requests when coming back online', async () => {
       // Start offline
-      navigator.onLine = false;
+      setOnlineStatus(false);
       mockFetch.mockRejectedValue(new Error('Network unavailable'));
       
-      render(<ChatInterface />);
+      render(<ChatInterface onCitationClick={mockOnCitationClick} />);
       
       const input = screen.getByPlaceholderText(/describe your emergency/i);
       const submitButton = screen.getByRole('button', { name: /send/i });
@@ -135,7 +148,10 @@ describe('Offline Validation Tests', () => {
       });
       
       // Simulate coming back online with successful response
-      navigator.onLine = true;
+      Object.defineProperty(navigator, 'onLine', {
+        writable: true,
+        value: true
+      });
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -180,7 +196,7 @@ describe('Offline Validation Tests', () => {
         json: async () => mockResponse
       });
       
-      render(<ChatInterface />);
+      render(<ChatInterface onCitationClick={mockOnCitationClick} />);
       
       const input = screen.getByPlaceholderText(/describe your emergency/i);
       const submitButton = screen.getByRole('button', { name: /send/i });
@@ -194,7 +210,7 @@ describe('Offline Validation Tests', () => {
       });
       
       // Go offline
-      navigator.onLine = false;
+      setOnlineStatus(false);
       
       // Response should still be visible
       expect(screen.getByText(/cached response/i)).toBeInTheDocument();
@@ -205,12 +221,18 @@ describe('Offline Validation Tests', () => {
     test('handles document loading errors gracefully', async () => {
       mockFetch.mockRejectedValue(new Error('Document not available offline'));
       
+      const mockDocument: DocumentSnippet = {
+        doc_id: "test-doc",
+        start: 0,
+        end: 100,
+        text: "Test document content",
+        title: "Test Document"
+      };
+
       render(
         <DocumentViewer
-          docId="test-doc"
-          startOffset={0}
-          endOffset={100}
-          onClose={() => {}}
+          document={mockDocument}
+          onBack={() => {}}
         />
       );
       
@@ -232,12 +254,18 @@ describe('Offline Validation Tests', () => {
         })
       });
       
+      const mockDocument: DocumentSnippet = {
+        doc_id: "test-doc",
+        start: 0,
+        end: 100,
+        text: "This is cached document content for offline viewing.",
+        title: "Test Document"
+      };
+
       render(
         <DocumentViewer
-          docId="test-doc"
-          startOffset={0}
-          endOffset={100}
-          onClose={() => {}}
+          document={mockDocument}
+          onBack={() => {}}
         />
       );
       
@@ -246,7 +274,7 @@ describe('Offline Validation Tests', () => {
       });
       
       // Go offline - content should still be visible
-      navigator.onLine = false;
+      setOnlineStatus(false);
       expect(screen.getByText(/cached document content/i)).toBeInTheDocument();
     });
   });
@@ -254,7 +282,7 @@ describe('Offline Validation Tests', () => {
   describe('Offline Mode Integration', () => {
     test('entire application works in offline mode', async () => {
       // Simulate offline mode from the start
-      navigator.onLine = false;
+      setOnlineStatus(false);
       
       // Mock local responses (simulating service worker or local cache)
       mockFetch.mockImplementation((url) => {
@@ -301,8 +329,8 @@ describe('Offline Validation Tests', () => {
       
       render(
         <div>
-          <OfflineIndicator />
-          <ChatInterface />
+          <OfflineIndicator isOnline={false} />
+          <ChatInterface onCitationClick={mockOnCitationClick} />
         </div>
       );
       
@@ -323,7 +351,10 @@ describe('Offline Validation Tests', () => {
 
     test('handles transition from online to offline gracefully', async () => {
       // Start online
-      navigator.onLine = true;
+      Object.defineProperty(navigator, 'onLine', {
+        writable: true,
+        value: true
+      });
       mockFetch.mockResolvedValue({
         ok: true,
         json: async () => ({
@@ -342,8 +373,8 @@ describe('Offline Validation Tests', () => {
       
       render(
         <div>
-          <OfflineIndicator />
-          <ChatInterface />
+          <OfflineIndicator isOnline={true} />
+          <ChatInterface onCitationClick={mockOnCitationClick} />
         </div>
       );
       
@@ -360,7 +391,7 @@ describe('Offline Validation Tests', () => {
       
       // Go offline
       act(() => {
-        navigator.onLine = false;
+        setOnlineStatus(false);
         window.dispatchEvent(new Event('offline'));
       });
       
@@ -385,7 +416,7 @@ describe('Offline Validation Tests', () => {
 
     test('validates offline functionality with service worker simulation', async () => {
       // Simulate service worker providing offline responses
-      navigator.onLine = false;
+      setOnlineStatus(false);
       
       mockFetch.mockImplementation((url, options) => {
         // Simulate service worker intercepting requests
@@ -413,7 +444,7 @@ describe('Offline Validation Tests', () => {
         return Promise.reject(new Error('Not cached'));
       });
       
-      render(<ChatInterface />);
+      render(<ChatInterface onCitationClick={mockOnCitationClick} />);
       
       const input = screen.getByPlaceholderText(/describe your emergency/i);
       const submitButton = screen.getByRole('button', { name: /send/i });
@@ -429,7 +460,7 @@ describe('Offline Validation Tests', () => {
 
   describe('Performance in Offline Mode', () => {
     test('maintains responsive UI during offline operations', async () => {
-      navigator.onLine = false;
+      setOnlineStatus(false);
       
       // Mock delayed offline response
       mockFetch.mockImplementation(() => 
@@ -452,7 +483,7 @@ describe('Offline Validation Tests', () => {
         )
       );
       
-      render(<ChatInterface />);
+      render(<ChatInterface onCitationClick={mockOnCitationClick} />);
       
       const input = screen.getByPlaceholderText(/describe your emergency/i);
       const submitButton = screen.getByRole('button', { name: /send/i });
@@ -477,7 +508,7 @@ describe('Offline Validation Tests', () => {
     });
 
     test('handles multiple offline requests efficiently', async () => {
-      navigator.onLine = false;
+      setOnlineStatus(false);
       
       let requestCount = 0;
       mockFetch.mockImplementation(() => {
@@ -499,7 +530,7 @@ describe('Offline Validation Tests', () => {
         });
       });
       
-      render(<ChatInterface />);
+      render(<ChatInterface onCitationClick={mockOnCitationClick} />);
       
       const input = screen.getByPlaceholderText(/describe your emergency/i);
       const submitButton = screen.getByRole('button', { name: /send/i });
