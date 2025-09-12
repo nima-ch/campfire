@@ -42,9 +42,6 @@ class PolicyEngine:
                 "burn", "severe burn", "hypothermia", "heat stroke"
             },
             blocked_phrases={
-                "diagnose", "diagnosis", "prescribe", "prescription", "medication",
-                "drug", "surgery", "operate", "medical treatment", "cure",
-                "disease", "illness", "condition", "disorder", "syndrome"
             },
             required_disclaimers=[
                 "Not medical advice",

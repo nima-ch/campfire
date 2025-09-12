@@ -9,12 +9,16 @@ export interface ChecklistStep {
 }
 
 export interface ChatResponse {
+  conversation_id: string;
   checklist: ChecklistStep[];
   meta: {
     disclaimer: string;
     when_to_call_emergency?: string;
+    [key: string]: any; // Allow additional meta fields
   };
   emergency_banner?: string;
+  blocked: boolean;
+  block_reason?: string;
 }
 
 export interface DocumentSnippet {

@@ -11,9 +11,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 from .. import __version__
@@ -141,6 +142,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
+    # Create API router
+    api_router = APIRouter(prefix="/api")
+    
     # Exception handlers
     @app.exception_handler(Exception)
     async def global_exception_handler(request, exc):
@@ -216,7 +220,7 @@ def create_app() -> FastAPI:
             )
     
     # Main chat endpoint
-    @app.post("/chat", response_model=ChatResponse)
+    @api_router.post("/chat", response_model=ChatResponse)
     async def chat(request: ChatRequest):
         """Main chat endpoint for emergency queries."""
         conversation_id = request.conversation_id or str(uuid.uuid4())
@@ -346,7 +350,7 @@ def create_app() -> FastAPI:
             )
     
     # Document viewer endpoint
-    @app.post("/document/view", response_model=DocumentViewResponse)
+    @api_router.post("/document/view", response_model=DocumentViewResponse)
     async def view_document(request: DocumentViewRequest):
         """Retrieve document snippet for citation viewing."""
         try:
@@ -388,8 +392,49 @@ def create_app() -> FastAPI:
                 detail=f"Failed to retrieve document: {str(e)}"
             )
     
+    # Document viewer endpoint (GET version for frontend)
+    @api_router.get("/document/{doc_id}")
+    async def view_document_get(doc_id: str, start: int, end: int):
+        """Retrieve document snippet for citation viewing (GET version for frontend)."""
+        try:
+            if not app_state["browser_tool"]:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Document viewer not available"
+                )
+            
+            # Use browser tool to get document content
+            result = app_state["browser_tool"].open(
+                doc_id=doc_id,
+                start=start,
+                end=end
+            )
+            
+            if result["status"] == "error":
+                raise HTTPException(
+                    status_code=404,
+                    detail=result["error"]
+                )
+            
+            return {
+                "doc_id": result["doc_id"],
+                "doc_title": result["doc_title"],
+                "text": result["text"],
+                "location": result["location"],
+                "success": True
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Document view failed: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to retrieve document: {str(e)}"
+            )
+    
     # Admin authentication endpoint
-    @app.post("/admin/login", response_model=AdminLoginResponse)
+    @api_router.post("/admin/login", response_model=AdminLoginResponse)
     async def admin_login(request: AdminLoginRequest):
         """Admin authentication endpoint."""
         if not authenticate_admin(request.password):
@@ -407,7 +452,7 @@ def create_app() -> FastAPI:
         )
     
     # Admin audit log endpoint
-    @app.get("/admin/audit", response_model=AuditLogResponse)
+    @api_router.get("/admin/audit", response_model=AuditLogResponse)
     async def get_audit_logs(
         page: int = 1,
         page_size: int = 50,
@@ -462,7 +507,7 @@ def create_app() -> FastAPI:
             )
     
     # Admin stats endpoint
-    @app.get("/admin/stats")
+    @api_router.get("/admin/stats")
     async def get_admin_stats(current_admin = Depends(get_current_admin)):
         """Get system statistics (admin only)."""
         try:
@@ -496,7 +541,7 @@ def create_app() -> FastAPI:
             )
     
     # System health monitoring endpoint
-    @app.get("/admin/health-history")
+    @api_router.get("/admin/health-history")
     async def get_health_history(
         hours: int = 24,
         current_admin = Depends(get_current_admin)
@@ -520,7 +565,7 @@ def create_app() -> FastAPI:
             )
     
     # Performance metrics endpoint
-    @app.get("/admin/performance")
+    @api_router.get("/admin/performance")
     async def get_performance_metrics(
         hours: int = 24,
         current_admin = Depends(get_current_admin)
@@ -544,7 +589,7 @@ def create_app() -> FastAPI:
             )
     
     # Harmony debug endpoint
-    @app.get("/admin/harmony-debug")
+    @api_router.get("/admin/harmony-debug")
     async def get_harmony_debug(
         limit: int = 10,
         current_admin = Depends(get_current_admin)
@@ -566,6 +611,9 @@ def create_app() -> FastAPI:
                 status_code=500,
                 detail=f"Failed to retrieve Harmony debug data: {str(e)}"
             )
+    
+    # Include API router
+    app.include_router(api_router)
     
     # System health logging (background task)
     @app.on_event("startup")
@@ -593,6 +641,17 @@ def create_app() -> FastAPI:
         
         # Start the background task
         asyncio.create_task(log_health_periodically())
+    
+    # Serve frontend static files (must be after all API routes)
+    frontend_build_path = Path("frontend/build")
+    if frontend_build_path.exists():
+        # Serve static assets (CSS, JS, images)
+        app.mount("/static", StaticFiles(directory=str(frontend_build_path / "static")), name="static")
+        # Serve the React app (must be last to catch all routes)
+        app.mount("/", StaticFiles(directory=str(frontend_build_path), html=True), name="frontend")
+    else:
+        logger.warning(f"Frontend build directory not found at {frontend_build_path}")
+        logger.warning("Run 'make build-frontend' to build the React frontend")
     
     return app
 

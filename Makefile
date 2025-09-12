@@ -1,4 +1,4 @@
-.PHONY: help install dev-install run format lint test clean ingest build docker-build docker-run
+.PHONY: help install dev-install run format lint test clean ingest build install-frontend build-frontend docker-build docker-run
 
 # Default target
 help:
@@ -9,7 +9,7 @@ help:
 	@echo "  dev-install  Install development dependencies with uv"
 	@echo ""
 	@echo "Development:"
-	@echo "  run          Start the FastAPI development server"
+	@echo "  run          Build frontend and start the complete application server"
 	@echo "  format       Format code with black and ruff"
 	@echo "  lint         Lint code with ruff and mypy"
 	@echo "  test         Run tests with pytest"
@@ -19,6 +19,7 @@ help:
 	@echo ""
 	@echo "Build:"
 	@echo "  build        Build the Python backend"
+	@echo "  install-frontend Install frontend dependencies"
 	@echo "  build-frontend Build the React frontend"
 	@echo "  build-all    Build both backend and frontend"
 	@echo "  clean        Clean build artifacts and cache"
@@ -50,8 +51,8 @@ dev-install:
 	uv sync --all-extras
 
 # Development server
-run:
-	uv run uvicorn campfire.main:app --host 0.0.0.0 --port 8000 --reload --app-dir backend/src
+run: build-frontend
+	uv run uvicorn campfire.api.main:app --host 0.0.0.0 --port 8000 --reload --app-dir backend/src
 
 # Code formatting
 format:
@@ -116,7 +117,10 @@ ingest:
 build:
 	uv build
 
-build-frontend:
+install-frontend:
+	cd frontend && npm install
+
+build-frontend: install-frontend
 	cd frontend && npm run build
 
 build-all: build build-frontend

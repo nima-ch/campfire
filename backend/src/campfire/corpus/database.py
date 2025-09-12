@@ -170,13 +170,23 @@ class CorpusDatabase:
         """
         conn = self.connect()
         
-        # Use FTS5 match syntax for better search
+        # Sanitize query for FTS5 - remove punctuation and special characters
+        import re
+        sanitized_query = re.sub(r'[^\w\s]', ' ', query)  # Replace punctuation with spaces
+        sanitized_query = re.sub(r'\s+', ' ', sanitized_query).strip()  # Normalize whitespace
+        
+        if not sanitized_query:
+            return []
+        
         # Convert multi-word queries to OR syntax for better matching
-        query_terms = query.replace("'", "''").split()  # Escape single quotes and split
+        query_terms = [term.strip() for term in sanitized_query.split() if term.strip()]
         if len(query_terms) > 1:
-            fts_query = " OR ".join(query_terms)
+            fts_query = " OR ".join(f'"{term}"' for term in query_terms)  # Quote each term
         else:
-            fts_query = query.replace("'", "''")
+            fts_query = f'"{query_terms[0]}"' if query_terms else ""
+        
+        if not fts_query:
+            return []
         
         cursor = conn.execute("""
             SELECT 

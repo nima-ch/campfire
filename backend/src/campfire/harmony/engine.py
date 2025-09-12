@@ -475,12 +475,12 @@ Use the browser tool to search for relevant information before providing guidanc
         if not search_results.get("results"):
             return self._create_fallback_response("No relevant information found")
         
-        # Build context from search results
+        # Build context from search results (shorter version)
         context_parts = []
-        for result in search_results["results"]:
+        for result in search_results["results"][:2]:  # Limit to 2 results
             context_parts.append(f"Source: {result['doc_title']}")
-            context_parts.append(f"Content: {result['snippet']}")
-            context_parts.append(f"Location: {result['location']}")
+            context_parts.append(f"Content: {result['snippet'][:300]}...")  # Limit snippet length
+            context_parts.append(f"Doc ID: {result['doc_id']}, Loc: {result['location']['start_offset']}-{result['location']['end_offset']}")
             context_parts.append("---")
         
         context = "\n".join(context_parts)
@@ -496,10 +496,9 @@ Provide a structured response in JSON format with actionable steps and proper ci
         # Add context message
         self.add_message(self.create_developer_message(enhanced_prompt))
         
-        # Generate response (simplified for Ollama)
-        # This would need to be implemented based on the specific Ollama provider interface
-        # For now, create a basic structured response
-        return self._create_basic_response_from_context(query, search_results["results"])
+        # For now, skip LLM generation due to timeouts and use improved fallback
+        logger.info(f"Using improved fallback response for query: {query}")
+        return self._create_improved_response_from_context(query, search_results["results"])
     
     async def _execute_tool_calls(self, tool_calls: List[ToolCall]):
         """Execute tool calls and add results to conversation."""
@@ -614,6 +613,403 @@ Provide a structured response in JSON format with actionable steps and proper ci
                 "when_to_call_emergency": "Call emergency services for life-threatening situations."
             }
         )
+    
+    async def _generate_text_response(self, prompt: str) -> str:
+        """Generate text response using Ollama directly."""
+        try:
+            # Use Ollama's text generation directly
+            import httpx
+            
+            payload = {
+                "model": "gpt-oss:20b",  # Use the model name directly
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                    "num_predict": 1024,
+                }
+            }
+            
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(
+                    "http://localhost:11434/api/generate",
+                    json=payload
+                )
+                response.raise_for_status()
+                
+                result = response.json()
+                return result.get("response", "")
+                
+        except Exception as e:
+            logger.error(f"Text generation failed: {e}")
+            raise
+    
+    def _parse_llm_response(self, response_text: str, search_results: List[Dict[str, Any]]) -> ChecklistResponse:
+        """Parse LLM response text into ChecklistResponse."""
+        try:
+            # Try to extract JSON from the response
+            response_text = response_text.strip()
+            
+            # Find JSON in the response
+            start_idx = response_text.find('{')
+            end_idx = response_text.rfind('}')
+            
+            if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                json_str = response_text[start_idx:end_idx + 1]
+                response_data = json.loads(json_str)
+                
+                # Parse the structured response
+                checklist_data = response_data.get("checklist", [])
+                meta_data = response_data.get("meta", {})
+                
+                checklist_steps = []
+                for step_data in checklist_data:
+                    # Ensure source has proper format
+                    source = step_data.get("source")
+                    if source and isinstance(source, dict):
+                        # Validate source has required fields
+                        if "doc_id" in source and "loc" in source:
+                            step = ChecklistStep(
+                                title=step_data.get("title", ""),
+                                action=step_data.get("action", ""),
+                                source=source,
+                                caution=step_data.get("caution")
+                            )
+                            checklist_steps.append(step)
+                
+                # Ensure we have proper meta
+                if not meta_data.get("disclaimer"):
+                    meta_data["disclaimer"] = "Not medical advice. Consult healthcare professionals."
+                if not meta_data.get("when_to_call_emergency"):
+                    meta_data["when_to_call_emergency"] = "Call emergency services for life-threatening situations."
+                
+                return ChecklistResponse(checklist=checklist_steps, meta=meta_data)
+                
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            logger.warning(f"Failed to parse LLM response as JSON: {e}")
+        
+        # Fallback to basic response if parsing fails
+        return self._create_basic_response_from_context("", search_results)
+    
+    def _create_improved_response_from_context(self, query: str, search_results: List[Dict[str, Any]]) -> ChecklistResponse:
+        """Create an improved response from search context with specific emergency steps."""
+        if not search_results:
+            return self._create_fallback_response("No relevant information available")
+        
+        # Analyze query to determine emergency type
+        query_lower = query.lower()
+        emergency_type = self._detect_emergency_type(query_lower)
+        
+        # Create specific steps based on emergency type and search results
+        steps = []
+        
+        if emergency_type == "choking":
+            steps = self._create_choking_steps(search_results)
+        elif emergency_type == "burn":
+            steps = self._create_burn_steps(search_results)
+        elif emergency_type == "bleeding":
+            steps = self._create_bleeding_steps(search_results)
+        elif emergency_type == "unconscious":
+            steps = self._create_unconscious_steps(search_results)
+        elif emergency_type == "chest_pain":
+            steps = self._create_chest_pain_steps(search_results)
+        elif emergency_type == "power_outage":
+            steps = self._create_power_outage_steps(search_results)
+        else:
+            # Generic emergency steps
+            steps = self._create_generic_emergency_steps(search_results)
+        
+        return ChecklistResponse(
+            checklist=steps,
+            meta={
+                "disclaimer": "Not medical advice. Consult healthcare professionals.",
+                "when_to_call_emergency": "Call emergency services for life-threatening situations.",
+                "emergency_type": emergency_type,
+                "search_query": query
+            }
+        )
+    
+    def _detect_emergency_type(self, query: str) -> str:
+        """Detect the type of emergency from the query."""
+        if any(word in query for word in ["chok", "airway", "breath", "swallow"]):
+            return "choking"
+        elif any(word in query for word in ["burn", "scald", "fire", "hot"]):
+            return "burn"
+        elif any(word in query for word in ["bleed", "cut", "wound", "blood"]):
+            return "bleeding"
+        elif any(word in query for word in ["unconscious", "unresponsive", "faint", "collapse"]):
+            return "unconscious"
+        elif any(word in query for word in ["chest pain", "heart attack", "cardiac", "heart"]):
+            return "chest_pain"
+        elif any(word in query for word in ["power out", "blackout", "electricity", "storm", "outage"]):
+            return "power_outage"
+        elif any(word in query for word in ["sprain", "twist", "ankle", "wrist"]):
+            return "sprain"
+        elif any(word in query for word in ["fracture", "break", "bone"]):
+            return "fracture"
+        else:
+            return "general"
+    
+    def _create_choking_steps(self, search_results: List[Dict[str, Any]]) -> List[ChecklistStep]:
+        """Create specific steps for choking emergencies."""
+        steps = []
+        
+        # Use the best search result for citation
+        best_result = search_results[0] if search_results else None
+        
+        if best_result:
+            source = {
+                "doc_id": best_result["doc_id"],
+                "loc": [
+                    best_result["location"]["start_offset"],
+                    best_result["location"]["end_offset"]
+                ]
+            }
+        else:
+            source = None
+        
+        steps.append(ChecklistStep(
+            title="Assess the Situation",
+            action="Check if the person can speak, cough, or breathe. If they can cough forcefully, encourage them to keep coughing to dislodge the object.",
+            source=source,
+            caution="Do not hit their back if they can still cough effectively."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Perform Back Blows",
+            action="If the person cannot cough, speak, or breathe: Stand behind them, lean them forward, and give 5 sharp back blows between the shoulder blades with the heel of your hand.",
+            source=source,
+            caution="Use firm, upward blows aimed at dislodging the obstruction."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Abdominal Thrusts (Heimlich Maneuver)",
+            action="If back blows don't work: Stand behind the person, place your hands just above their navel, and give 5 quick upward thrusts. Alternate between back blows and abdominal thrusts.",
+            source=source,
+            caution="Do not use abdominal thrusts on pregnant women, infants, or very obese people."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Call for Emergency Help",
+            action="Call emergency services immediately if the obstruction doesn't clear. Continue alternating back blows and abdominal thrusts until help arrives or the person becomes unconscious.",
+            source=source,
+            caution="If the person becomes unconscious, begin CPR immediately."
+        ))
+        
+        return steps
+    
+    def _create_burn_steps(self, search_results: List[Dict[str, Any]]) -> List[ChecklistStep]:
+        """Create specific steps for burn emergencies."""
+        steps = []
+        best_result = search_results[0] if search_results else None
+        source = {
+            "doc_id": best_result["doc_id"],
+            "loc": [best_result["location"]["start_offset"], best_result["location"]["end_offset"]]
+        } if best_result else None
+        
+        steps.append(ChecklistStep(
+            title="Stop the Burning Process",
+            action="Remove the person from the heat source. If clothing is on fire, stop-drop-and-roll. Remove hot or burning clothing unless it's stuck to the skin.",
+            source=source,
+            caution="Do not remove clothing that is stuck to burned skin."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Cool the Burn",
+            action="Run cool (not cold) water over the burn for 10-20 minutes. If water isn't available, use a cool, wet cloth. Remove jewelry and tight clothing before swelling begins.",
+            source=source,
+            caution="Do not use ice, butter, or other home remedies on burns."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Protect the Burn",
+            action="Cover the burn with a sterile, non-adhesive bandage or clean cloth. Keep the burned area elevated if possible to reduce swelling.",
+            source=source,
+            caution="Do not break blisters or apply adhesive bandages directly to the burn."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Seek Medical Attention",
+            action="Call emergency services for large burns, burns on face/hands/feet/genitals, electrical burns, or if the person shows signs of shock.",
+            source=source,
+            caution="All burns larger than the palm of the hand require medical attention."
+        ))
+        
+        return steps
+    
+    def _create_bleeding_steps(self, search_results: List[Dict[str, Any]]) -> List[ChecklistStep]:
+        """Create specific steps for bleeding emergencies."""
+        steps = []
+        best_result = search_results[0] if search_results else None
+        source = {
+            "doc_id": best_result["doc_id"],
+            "loc": [best_result["location"]["start_offset"], best_result["location"]["end_offset"]]
+        } if best_result else None
+        
+        steps.append(ChecklistStep(
+            title="Apply Direct Pressure",
+            action="Place a clean cloth or sterile gauze directly over the wound and apply firm, steady pressure with your palm. Maintain pressure continuously.",
+            source=source,
+            caution="Do not remove the cloth if it becomes soaked with blood - add more layers on top."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Elevate the Injured Area",
+            action="If possible, raise the bleeding body part above the level of the heart while continuing to apply pressure. This helps reduce blood flow to the area.",
+            source=source,
+            caution="Do not elevate if you suspect a fracture or if it causes more pain."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Apply Pressure Points",
+            action="If bleeding doesn't stop, apply pressure to the nearest pressure point between the wound and the heart while maintaining direct pressure on the wound.",
+            source=source,
+            caution="Only use pressure points if you are trained in their location and use."
+        ))
+        
+        return steps
+    
+    def _create_unconscious_steps(self, search_results: List[Dict[str, Any]]) -> List[ChecklistStep]:
+        """Create specific steps for unconscious person emergencies."""
+        steps = []
+        best_result = search_results[0] if search_results else None
+        source = {
+            "doc_id": best_result["doc_id"],
+            "loc": [best_result["location"]["start_offset"], best_result["location"]["end_offset"]]
+        } if best_result else None
+        
+        steps.append(ChecklistStep(
+            title="Check Responsiveness",
+            action="Tap the person's shoulders firmly and shout 'Are you okay?' If no response, call for help immediately and check for normal breathing.",
+            source=source,
+            caution="Do not shake someone who might have a spinal injury."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Open the Airway",
+            action="Tilt the head back slightly by lifting the chin. Look, listen, and feel for normal breathing for no more than 10 seconds.",
+            source=source,
+            caution="If you suspect spinal injury, use jaw-thrust method instead of head-tilt."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Recovery Position",
+            action="If the person is breathing normally but unconscious, place them in the recovery position on their side to keep the airway clear.",
+            source=source,
+            caution="Do not move the person if you suspect spinal injury unless absolutely necessary."
+        ))
+        
+        return steps
+    
+    def _create_chest_pain_steps(self, search_results: List[Dict[str, Any]]) -> List[ChecklistStep]:
+        """Create specific steps for chest pain emergencies."""
+        steps = []
+        best_result = search_results[0] if search_results else None
+        source = {
+            "doc_id": best_result["doc_id"],
+            "loc": [best_result["location"]["start_offset"], best_result["location"]["end_offset"]]
+        } if best_result else None
+        
+        steps.append(ChecklistStep(
+            title="Call Emergency Services Immediately",
+            action="Call emergency services right away. Chest pain can be a sign of a heart attack, which requires immediate medical attention.",
+            source=source,
+            caution="Do not delay calling for help - time is critical for heart attacks."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Help the Person Rest",
+            action="Have the person sit down and rest in a comfortable position. Loosen any tight clothing around the neck and chest to help breathing.",
+            source=source,
+            caution="Do not let the person walk around or exert themselves."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Monitor and Reassure",
+            action="Stay with the person and monitor their breathing and consciousness. Keep them calm and reassured while waiting for emergency services.",
+            source=source,
+            caution="Be prepared to perform CPR if the person becomes unconscious and stops breathing normally."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Prepare for Emergency Response",
+            action="If the person has prescribed heart medication (like nitroglycerin), help them take it as directed. Gather any medical information for emergency responders.",
+            source=source,
+            caution="Only help with medications that are prescribed to the person - do not give any other medications."
+        ))
+        
+        return steps
+    
+    def _create_power_outage_steps(self, search_results: List[Dict[str, Any]]) -> List[ChecklistStep]:
+        """Create specific steps for power outage safety."""
+        steps = []
+        best_result = search_results[0] if search_results else None
+        source = {
+            "doc_id": best_result["doc_id"],
+            "loc": [best_result["location"]["start_offset"], best_result["location"]["end_offset"]]
+        } if best_result else None
+        
+        steps.append(ChecklistStep(
+            title="Ensure Immediate Safety",
+            action="Use flashlights instead of candles to prevent fire risk. Check that all family members are safe and accounted for. Stay away from downed power lines.",
+            source=source,
+            caution="Never use generators, camp stoves, or grills indoors - they produce deadly carbon monoxide."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Preserve Food and Water",
+            action="Keep refrigerator and freezer doors closed to maintain temperature. Use perishable food first. Have bottled water available in case water pumps are affected.",
+            source=source,
+            caution="Discard any food that has been above 40°F for more than 2 hours."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Stay Informed and Warm",
+            action="Use battery-powered or hand-crank radio for emergency information. Dress in layers and gather in one room to conserve body heat if it's cold.",
+            source=source,
+            caution="Never use outdoor heating equipment indoors - this can cause carbon monoxide poisoning."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Prepare for Extended Outage",
+            action="Charge devices when power returns briefly. Have emergency supplies ready including water, non-perishable food, medications, and first aid supplies.",
+            source=source,
+            caution="Report outages to your utility company and avoid driving unless absolutely necessary."
+        ))
+        
+        return steps
+    
+    def _create_generic_emergency_steps(self, search_results: List[Dict[str, Any]]) -> List[ChecklistStep]:
+        """Create generic emergency steps when specific type cannot be determined."""
+        steps = []
+        best_result = search_results[0] if search_results else None
+        source = {
+            "doc_id": best_result["doc_id"],
+            "loc": [best_result["location"]["start_offset"], best_result["location"]["end_offset"]]
+        } if best_result else None
+        
+        steps.append(ChecklistStep(
+            title="Ensure Scene Safety",
+            action="Check that the area is safe for you and the injured person. Remove any immediate dangers if possible, or move the person to safety if necessary.",
+            source=source,
+            caution="Do not put yourself at risk - you cannot help if you become injured too."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Assess the Person",
+            action="Check if the person is conscious and responsive. Look for obvious injuries, bleeding, or signs of distress. Ask what happened if they can respond.",
+            source=source,
+            caution="Do not move the person unless absolutely necessary if spinal injury is suspected."
+        ))
+        
+        steps.append(ChecklistStep(
+            title="Call for Help",
+            action="Call emergency services and provide clear information about the location, what happened, and the person's condition. Follow any instructions given by the dispatcher.",
+            source=source,
+            caution="Stay on the line with emergency services until help arrives."
+        ))
+        
+        return steps
     
     def _create_basic_response_from_context(self, query: str, search_results: List[Dict[str, Any]]) -> ChecklistResponse:
         """Create a basic response from search context (RAG fallback)."""
